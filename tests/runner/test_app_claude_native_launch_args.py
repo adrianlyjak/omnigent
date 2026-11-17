@@ -1382,7 +1382,9 @@ async def _auto_create_claude_terminal_for_test(
     )
 
 
+@pytest.mark.parametrize("has_skills", [False, True])
 async def test_auto_create_claude_terminal_seeds_trust_with_launch_env(
+    has_skills: bool,
     bridge_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1401,7 +1403,22 @@ async def test_auto_create_claude_terminal_seeds_trust_with_launch_env(
     registry.client_surface_env.return_value = {"OMNIGENT_CLIENT_SURFACE": "desktop"}
     registry.launch_required_terminal.side_effect = RuntimeError("stop after seeding")
 
-    def record_seed(workspace: Path, env: dict[str, str] | None = None) -> None:
+    overlays = []
+
+    def skill_args(directory, *_args):
+        if not has_skills:
+            return []
+        overlay = directory / "agent-skills"
+        overlay.mkdir(parents=True, exist_ok=True)
+        overlays.append(overlay)
+        return ["--add-dir", str(overlay)]
+
+    monkeypatch.setattr("omnigent.inner.bundle_skills.claude_agents_skill_args", skill_args)
+
+    def record_seed(
+        workspace: Path, env: dict[str, str] | None = None, *, additional_directories=()
+    ) -> None:
+        assert additional_directories == tuple(overlays)
         registry.launch_required_terminal.assert_not_called()
         seeded.append((workspace, env))
 
@@ -1533,7 +1550,7 @@ async def test_auto_create_claude_terminal_cleans_routers_when_trust_seeding_fai
     async def record_turn_shutdown(_session_id: str, router: object) -> None:
         shutdowns.append(("turn", router))
 
-    def failing_seed(_workspace: Path, env: dict[str, str] | None = None) -> None:
+    def failing_seed(_workspace: Path, env: dict[str, str] | None = None, **_kwargs) -> None:
         raise ValueError("config is not a JSON object")
 
     monkeypatch.setattr(
@@ -1608,7 +1625,7 @@ async def test_auto_create_claude_terminal_seed_cleanup_attempts_both_shutdowns(
     async def record_turn_shutdown(_session_id: str, _router: object) -> None:
         shutdowns.append("turn")
 
-    def failing_seed(_workspace: Path, env: dict[str, str] | None = None) -> None:
+    def failing_seed(_workspace: Path, env: dict[str, str] | None = None, **_kwargs) -> None:
         raise ValueError("config is not a JSON object")
 
     monkeypatch.setattr(

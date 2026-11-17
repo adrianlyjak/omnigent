@@ -10193,6 +10193,35 @@ def test_ensure_trusted_creates_config_when_missing(
     assert data["projects"][str(workspace.resolve())]["hasTrustDialogAccepted"] is True
 
 
+def test_ensure_trusted_additional_directory_uses_workspace_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A relative config selector belongs to the launch cwd, including overlay trust."""
+    _redirect_home(monkeypatch, tmp_path / "home")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    overlay = tmp_path / "bridge" / "agent-skills"
+    overlay.mkdir(parents=True)
+    config = workspace / "config" / ".claude.json"
+    config.parent.mkdir()
+    config.write_text(json.dumps({"keep": "value", "projects": {str(overlay): {"keep": True}}}))
+    env = {"HOME": str(tmp_path / "home"), "CLAUDE_CONFIG_DIR": "config"}
+
+    ensure_claude_workspace_trusted(workspace, env, additional_directories=(overlay,))
+
+    data = json.loads(config.read_text())
+    assert data["keep"] == "value"
+    assert data["projects"] == {
+        str(workspace): {"hasTrustDialogAccepted": True},
+        str(overlay): {"keep": True, "hasTrustDialogAccepted": True},
+    }
+    assert not (overlay / "config").exists()
+    mtime = config.stat().st_mtime_ns
+    ensure_claude_workspace_trusted(workspace, env, additional_directories=(overlay,))
+    assert config.stat().st_mtime_ns == mtime
+
+
 def test_ensure_trusted_declines_auto_default_question_for_onboarded_user(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

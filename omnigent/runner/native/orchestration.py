@@ -9921,9 +9921,11 @@ async def _auto_create_claude_terminal(
     )
     # Seed trust and onboarding in the config selected by the terminal's launch environment.
     try:
+        skills_directory = bridge_dir / "agent-skills"
         ensure_claude_workspace_trusted(
             _claude_terminal_launch_cwd(env_spec, agent_os_env),
             env=_claude_terminal_launch_env(env_spec),
+            additional_directories=(skills_directory,) if skills_directory.is_dir() else (),
         )
     except BaseException as seed_error:
         # No forwarder owns the routers yet, so release the ones this launch started.

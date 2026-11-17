@@ -2065,7 +2065,12 @@ def _account_home_dir() -> Path:
         return Path.home()
 
 
-def ensure_claude_workspace_trusted(workspace: Path, env: Mapping[str, str] | None = None) -> None:
+def ensure_claude_workspace_trusted(
+    workspace: Path,
+    env: Mapping[str, str] | None = None,
+    *,
+    additional_directories: tuple[Path, ...] = (),
+) -> None:
     """
     Pre-accept Claude Code's first-run trust, onboarding, and mode prompts.
 
@@ -2107,6 +2112,8 @@ def ensure_claude_workspace_trusted(workspace: Path, env: Mapping[str, str] | No
     :param env: Environment the Claude terminal is launched with, used to
         find the config file Claude will load. ``None`` uses this process's
         environment.
+    :param additional_directories: Generated skill directories passed with
+        ``--add-dir``. Seed them in the same launch-selected config as the workspace.
     :returns: None.
     :raises ValueError: If the existing global config is not a regular
         file or is a broken or looping symlink, or it (or its ``projects`` map /
@@ -2149,18 +2156,20 @@ def ensure_claude_workspace_trusted(workspace: Path, env: Mapping[str, str] | No
 
     # Per-directory trust gate. Claude keys its ``projects`` map by the
     # resolved absolute path, so match that exactly.
-    project_key = str(workspace.resolve())
     projects = data.setdefault("projects", {})
     if not isinstance(projects, dict):
         raise ValueError(f"{config_path} 'projects' is not a JSON object; refusing to overwrite.")
-    project = projects.setdefault(project_key, {})
-    if not isinstance(project, dict):
-        raise ValueError(
-            f"{config_path} projects[{project_key!r}] is not a JSON object; refusing to overwrite."
-        )
-    if project.get("hasTrustDialogAccepted") is not True:
-        project["hasTrustDialogAccepted"] = True
-        changed = True
+    for directory in (workspace, *additional_directories):
+        project_key = str(directory.resolve())
+        project = projects.setdefault(project_key, {})
+        if not isinstance(project, dict):
+            raise ValueError(
+                f"{config_path} projects[{project_key!r}] is not a JSON object; "
+                "refusing to overwrite."
+            )
+        if project.get("hasTrustDialogAccepted") is not True:
+            project["hasTrustDialogAccepted"] = True
+            changed = True
 
     if not changed:
         return
